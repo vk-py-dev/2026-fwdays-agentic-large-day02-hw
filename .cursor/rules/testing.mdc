@@ -1,0 +1,198 @@
+---
+description: "Testing standards and practices for Excalidraw components and utilities"
+globs: packages/**/*.test.ts,packages/**/*.test.tsx
+alwaysApply: false
+---
+
+# Testing Standards
+
+## Test File Structure
+
+- **Location**: Colocated with source file (e.g., `Button.test.tsx` next to `Button.tsx`)
+- **Naming**: `{FileName}.test.ts` or `{FileName}.test.tsx`
+- **Framework**: Vitest with React Testing Library for components
+- **Organization**: Group related tests with `describe` blocks
+
+## Writing Tests
+
+### Basic Test Structure
+
+```typescript
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+
+describe('ComponentName', () => {
+  beforeEach(() => {
+    // Setup before each test
+  });
+
+  afterEach(() => {
+    // Cleanup after each test
+  });
+
+  it('should render without crashing', () => {
+    render(<ComponentName />);
+    expect(screen.getByRole('button')).toBeInTheDocument();
+  });
+
+  it('should handle user interactions', async () => {
+    const user = userEvent.setup();
+    render(<ComponentName onClick={vi.fn()} />);
+    await user.click(screen.getByRole('button'));
+    expect(mockFn).toHaveBeenCalled();
+  });
+});
+```
+
+### Component Testing
+
+```typescript
+// ✅ GOOD - Test user interactions, not implementation
+it('should call onClick when clicked', async () => {
+  const handleClick = vi.fn();
+  const user = userEvent.setup();
+  
+  render(<Button onClick={handleClick}>Click me</Button>);
+  await user.click(screen.getByRole('button'));
+  
+  expect(handleClick).toHaveBeenCalled();
+});
+
+// ❌ BAD - Testing implementation details
+it('should call onClick when clicked', () => {
+  const wrapper = shallow(<Button />);
+  wrapper.find('button').simulate('click');
+  // ...
+});
+```
+
+### Utility/Function Testing
+
+```typescript
+// ✅ GOOD - Test inputs and outputs
+it('should calculate correct value', () => {
+  const result = calculateSum(2, 3);
+  expect(result).toBe(5);
+});
+
+// ✅ GOOD - Test edge cases and error conditions
+it('should handle null values gracefully', () => {
+  expect(() => calculateSum(null, 3)).toThrow('Invalid input');
+});
+```
+
+## Test Naming
+
+- Describe **what** the component/function does: `should render with correct props`
+- Avoid implementation details in names: `should call setState` (bad) → `should update value` (good)
+- Use clear, business-domain language
+
+## Mocking & Setup
+
+```typescript
+// ✅ GOOD - Mock external dependencies
+import { vi } from 'vitest';
+
+const mockFetch = vi.fn().mockResolvedValue({ data: [] });
+
+// ✅ GOOD - Use beforeEach for common setup
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockFetch.mockClear();
+});
+
+// ❌ BAD - Test pollution across test files
+// Don't rely on side effects or global state changes between tests
+```
+
+## Snapshot Testing
+
+```typescript
+// ✅ GOOD - Use snapshots for complex UI structures sparingly
+it('should render complex component correctly', () => {
+  const { container } = render(<ComplexComponent />);
+  expect(container).toMatchSnapshot();
+});
+
+// ❌ BAD - Overusing snapshots (hard to review, fragile)
+// Don't snapshot trivial output or constantly failing snapshots
+```
+
+## Running Tests
+
+```bash
+# Run all tests
+yarn test:update
+
+# Run tests in watch mode
+yarn test
+
+# Run tests for specific file
+yarn test Button.test.tsx
+
+# Run tests with coverage
+yarn test:coverage
+```
+
+## Coverage Goals
+
+- **Minimum**: 70% line coverage
+- **Target**: 80%+ for critical paths (utils, hooks)
+- **Focus**: Test important business logic, not boilerplate
+
+---
+
+## How to Verify
+
+### Code Review Checklist
+
+- [ ] **Test file exists**: Source file has corresponding `.test.ts` or `.test.tsx`
+- [ ] **Descriptive test names**: Tests describe behavior, not implementation
+- [ ] **No implementation testing**: Tests focus on inputs/outputs, not internal details
+- [ ] **Async handling correct**: `async/await` used properly with `userEvent.setup()`
+- [ ] **Mocks properly setup**: External dependencies are mocked, not real APIs called
+- [ ] **Cleanup performed**: `afterEach` or `cleanup` called to prevent test pollution
+- [ ] **No hardcoded timeouts**: Avoid `setTimeout` in tests, use waitFor or userEvent
+- [ ] **Assertions are specific**: Use exact matchers (not `toBeTruthy()`), avoid generic checks
+- [ ] **No snapshot bloat**: Snapshots are reviewed and kept minimal
+- [ ] **Edge cases covered**: Tests include error conditions, empty states, null values
+
+### Automated Checks
+
+```bash
+# Find tests without proper async handling
+rg "userEvent\.(click|type)" packages/ --type tsx -A2 | rg -v "await"
+
+# Find tests with implementation names
+rg "it\('should.*setState" packages/ --type tsx
+
+# Find broad assertions
+rg "toBeTruthy\(\)|toBeFalsy\(\)" packages/ --type tsx
+
+# Verify all source files have tests
+for file in $(rg "^export\s+(const|function|class)" packages/ --files-with-matches --type tsx); do
+  if [ ! -f "${file%.tsx}.test.tsx" ] && [ ! -f "${file%.ts}.test.ts" ]; then
+    echo "Missing test: $file"
+  fi
+done
+```
+
+### Manual Testing Process
+
+1. **Run test suite**: `yarn test:update` — verify all tests pass
+2. **Check coverage**: `yarn test:coverage` — ensure critical paths covered
+3. **Review test names**: Each test should clearly state what it does
+4. **Verify async patterns**: Async tests use `await` and `userEvent.setup()`
+5. **Inspect mocks**: Ensure external APIs are mocked, not real calls
+6. **Validate assertions**: Each assertion is specific and meaningful
+7. **No test interdependence**: Tests should run in any order
+
+### Testing Scenarios
+
+- [ ] Happy path: Component/function works with valid inputs
+- [ ] Edge cases: Null, undefined, empty values, boundary conditions
+- [ ] Error handling: Invalid inputs throw or handle gracefully
+- [ ] User interactions: Click, type, focus events trigger correct behavior
+- [ ] State changes: Component updates correctly when props/state change
+- [ ] Accessibility: Component is keyboard navigable and screen-reader friendly

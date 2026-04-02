@@ -1,0 +1,176 @@
+---
+description: "Security best practices for Excalidraw"
+alwaysApply: true
+---
+
+# Security Standards
+
+## Input Validation & Sanitization
+
+Always validate and sanitize user input before processing:
+
+```typescript
+// ❌ BAD - Direct use of user input
+const element = { name: userInput.name };
+canvas.innerHTML = userDrawing;
+
+// ✅ GOOD - Validate and sanitize
+import DOMPurify from 'dompurify';
+
+const element = { 
+  name: typeof userInput.name === 'string' ? userInput.name.trim() : ''
+};
+const safeHTML = DOMPurify.sanitize(userDrawing);
+canvas.innerHTML = safeHTML;
+```
+
+## XSS Prevention
+
+Never render untrusted content as HTML or evaluate dynamic code:
+
+```typescript
+// ❌ BAD
+element.label = userData.label; // If rendered in HTML
+eval(userCode);
+new Function(userCode)();
+
+// ✅ GOOD
+element.label = userData.label; // If only used as text content
+// Use textContent, not innerHTML
+element.textContent = userData.label;
+```
+
+## CSRF Protection
+
+When making state-changing requests:
+
+```typescript
+// ✅ GOOD - Include CSRF token
+const saveDrawing = async (drawing: Drawing) => {
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+  
+  return fetch('/api/drawings', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRF-Token': csrfToken || '',
+    },
+    body: JSON.stringify(drawing),
+  });
+};
+```
+
+## Sensitive Data Handling
+
+Never log, expose, or store sensitive data insecurely:
+
+```typescript
+// ❌ BAD
+console.log({ userToken, password: user.password });
+localStorage.setItem('authToken', token); // Exposed to XSS
+
+// ✅ GOOD
+// Log only safe fields
+console.log({ userId: user.id, action: 'login' });
+// Use secure, httpOnly cookies for auth tokens
+sessionStorage.setItem('sessionId', sessionId); // Only for non-sensitive data
+```
+
+## Dependency Security
+
+- **Always audit** new dependencies: `npm audit`, `yarn audit`
+- **Pin versions** for critical dependencies
+- **Review** large or unfamiliar packages before adding
+- **No eval-like functions** in dependencies (check package.json)
+
+## API Security
+
+```typescript
+// ✅ GOOD - Secure API communication
+const fetchDrawing = async (id: string) => {
+  // Validate input
+  if (!id || typeof id !== 'string' || id.length > 100) {
+    throw new Error('Invalid drawing ID');
+  }
+  
+  // Use HTTPS only in production
+  const url = new URL(`/api/drawings/${encodeURIComponent(id)}`, window.location.origin);
+  
+  return fetch(url.toString(), {
+    method: 'GET',
+    headers: { 'Accept': 'application/json' },
+    credentials: 'same-origin', // CSRF protection
+  });
+};
+```
+
+## File Upload Security
+
+```typescript
+// ✅ GOOD - Validate file uploads
+const handleFileUpload = (file: File) => {
+  const MAX_SIZE = 10 * 1024 * 1024; // 10MB
+  const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'application/json'];
+  
+  if (file.size > MAX_SIZE) {
+    throw new Error('File too large');
+  }
+  
+  if (!ALLOWED_TYPES.includes(file.type)) {
+    throw new Error('Invalid file type');
+  }
+  
+  // Process file safely
+  return processFile(file);
+};
+```
+
+## Authentication & Authorization
+
+- **Never hardcode** credentials or API keys
+- **Use environment variables** for secrets (`.env`, not `.env.example`)
+- **Check permissions** before every state-changing operation
+- **Validate tokens** server-side, not just client-side
+
+```typescript
+// ✅ GOOD
+const canEditDrawing = (userId: string, drawing: Drawing): boolean => {
+  return drawing.ownerId === userId || drawing.collaborators.includes(userId);
+};
+```
+
+---
+
+## How to Verify
+
+### Code Review Checklist
+
+- [ ] **User inputs checked**: All `userInput`, `URLParams`, `query parameters`, `file uploads` are validated
+- [ ] **No innerHTML with user data**: Search for `innerHTML +=`, `innerHTML =` patterns
+- [ ] **No eval/dynamic code**: No `eval()`, `new Function()`, `setInterval(code)` with user input
+- [ ] **Secrets not exposed**: No API keys in code, `console.log()` calls don't leak sensitive data
+- [ ] **CSRF protection**: State-changing requests include CSRF tokens
+- [ ] **File uploads validated**: Size, type, and content checked before processing
+- [ ] **Dependencies audited**: Run `yarn audit` before merge, no high/critical vulnerabilities
+- [ ] **API endpoints protected**: Authentication/authorization checked server-side
+
+### Automated Checks
+
+```bash
+# Check for security vulnerabilities in dependencies
+yarn audit
+
+# Search for dangerous patterns
+rg "innerHTML\s*=" packages/ --type ts --type tsx
+rg "eval\(" packages/ --type ts --type tsx
+rg "new Function\(" packages/ --type ts --type tsx
+```
+
+### Testing
+
+- [ ] Attempt to inject XSS payloads: `<img src=x onerror=alert(1)>`
+- [ ] Test with invalid/oversized file uploads
+- [ ] Verify CSRF tokens are present in forms
+- [ ] Check that auth tokens are not logged or exposed in network tab
+- [ ] Validate that API rejects requests without proper authorization
+

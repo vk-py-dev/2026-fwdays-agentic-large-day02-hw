@@ -1,0 +1,57 @@
+---
+description: "Code conventions for Excalidraw components and utilities"
+globs: packages/**/*.ts,packages/**/*.tsx
+alwaysApply: false
+---
+
+# Code Conventions
+
+## Components
+
+- Functional components + hooks ONLY (no class components)
+- Props interface: `{ComponentName}Props`
+- Named exports only (no default exports)
+- Colocated tests: `ComponentName.test.tsx`
+
+## TypeScript
+
+- Strict mode — no `any`, no `@ts-ignore`
+- Prefer `type` over `interface` for simple types
+- Import types: `import type { X } from "..."`
+
+## Files
+
+- kebab-case for files: `element-utils.ts`
+- PascalCase for components: `LayerUI.tsx`
+
+## How to Verify
+
+### Code Review Checklist
+
+- [ ] **No class components**: Search for `class.*extends` in the file
+- [ ] **Props interface exists**: Component has `{ComponentName}Props` type/interface
+- [ ] **Named exports only**: No `export default` statements
+- [ ] **No `any` types**: Search for `: any` or `as any`
+- [ ] **No `@ts-ignore`**: Verify file doesn't contain `@ts-ignore`
+- [ ] **Import types correctly**: Type imports use `import type` syntax
+- [ ] **Naming conventions**: Files use kebab-case, components use PascalCase
+- [ ] **Test file exists**: Component has corresponding `.test.tsx` file
+
+### Automated Checks
+
+```bash
+# Find class components
+rg "class\s+\w+\s+extends" packages/ --type ts --type tsx
+
+# Find any types
+rg ":\s*any" packages/ --type ts --type tsx
+
+# Find @ts-ignore
+rg "@ts-ignore" packages/ --type ts --type tsx
+
+# Find default exports
+rg "export\s+default" packages/ --type ts --type tsx
+
+# Find missing import type
+rg "import\s+\{\s*\w+.*\}\s+from" packages/ --type ts --type tsx
+```

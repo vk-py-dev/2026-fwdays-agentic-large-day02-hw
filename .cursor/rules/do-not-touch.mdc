@@ -1,0 +1,56 @@
+---
+description: "Protected files that should not be modified"
+globs: "packages/excalidraw/**"
+alwaysApply: true
+---
+
+# Protected Files
+
+NEVER modify these files without explicit approval:
+
+- `packages/excalidraw/scene/renderer.ts` — render pipeline
+- `packages/excalidraw/data/restore.ts` — file format compat
+- `packages/excalidraw/actions/manager.ts` — action system
+- `packages/excalidraw/types.ts` — core types
+
+Changes to protected files require:
+
+1. Full understanding of dependencies
+2. Running complete test suite
+3. Manual QA verification
+
+## How to Verify
+
+Before committing changes to protected files:
+
+### Code Review Checklist
+
+- [ ] **Dependencies mapped**: Understand all files that import from the protected file
+- [ ] **Tests passing**: Run `yarn test:update` to verify all tests pass
+- [ ] **Type safety**: Run `yarn test:typecheck` to ensure no TypeScript errors
+- [ ] **No breaking changes**: Confirm API signatures remain backward compatible
+- [ ] **Documentation updated**: Update comments/docs if behavior changes
+
+### Verification Steps
+
+```bash
+# Check for files that depend on the protected file
+rg "from.*<protected-file>" --type ts --type tsx
+
+# Run complete test suite
+yarn test:update
+
+# Type check
+yarn test:typecheck
+
+# Build to catch compilation errors
+yarn build
+```
+
+### Risk Assessment
+
+- [ ] Change is minimal and isolated
+- [ ] No changes to exported public APIs
+- [ ] Core algorithm logic unchanged
+- [ ] Performance impact assessed
+- [ ] Backward compatibility maintained

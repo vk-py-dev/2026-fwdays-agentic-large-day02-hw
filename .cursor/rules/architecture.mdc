@@ -1,0 +1,44 @@
+---
+description: "Architecture constraints for Excalidraw"
+globs: packages/excalidraw/**
+alwaysApply: false
+---
+
+# Excalidraw Architecture
+
+## State Management
+
+- Custom state via actionManager — NOT Redux/Zustand/MobX
+- State updates: actionManager.dispatch() ONLY
+- State type: AppState (packages/excalidraw/types.ts)
+
+## Rendering
+
+- Canvas 2D rendering — NOT React DOM for drawing
+- Render pipeline: Scene → renderScene() → canvas context
+- DO NOT use react-konva, fabric.js, pixi.js
+
+## Dependencies
+
+- No new npm packages without explicit approval
+- Check packages/utils/ before adding external helpers
+
+## How to Verify
+
+### State Management
+
+- [ ] Search for Redux/Zustand/MobX imports in changed files
+- [ ] Verify all state updates use `actionManager.dispatch()`
+- [ ] Check that custom state conforms to `AppState` type
+
+### Rendering
+
+- [ ] Search for `innerHTML`, `React.render`, or DOM mutation patterns
+- [ ] Verify canvas rendering uses canvas context APIs (e.g., `ctx.fillRect()`, `ctx.drawImage()`)
+- [ ] Confirm no external canvas libraries imported
+
+### Dependencies
+
+- [ ] Run `yarn audit` to check for new vulnerabilities
+- [ ] If modifying `package.json`, verify no new packages added without approval
+- [ ] Check `packages/utils/` for existing helpers before writing new utilities
