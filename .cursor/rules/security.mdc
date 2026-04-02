@@ -14,17 +14,22 @@ Always validate and sanitize user input before processing:
 ```typescript
 // ❌ BAD - Direct use of user input
 const element = { name: userInput.name };
-canvas.innerHTML = userDrawing;
+element.textContent = userDrawing; // Never render HTML directly
 
 // ✅ GOOD - Validate and sanitize
-import DOMPurify from 'dompurify';
-
 const element = { 
   name: typeof userInput.name === 'string' ? userInput.name.trim() : ''
 };
-const safeHTML = DOMPurify.sanitize(userDrawing);
-canvas.innerHTML = safeHTML;
+// Always use textContent for user data, never innerHTML
+element.textContent = userDrawing;
 ```
+
+**Exception (Excalidraw-specific)**: SVG rendering with DOMPurify in rendering pipelines requires `innerHTML` with sanitized SVG content. This narrow exception applies *only* when:
+1. The SVG is sanitized with `DOMPurify.sanitize()`
+2. Used in Excalidraw's rendering context (not user-facing HTML)
+3. Documented with explicit SVG context and `DOMPurify` reference
+
+See the **[SVG & Canvas Rendering Security](#svg--canvas-rendering-security)** section for Excalidraw-specific patterns.
 
 ## XSS Prevention
 

@@ -61,3 +61,32 @@ This project follows specific security and architectural standards defined in:
 - `.cursor/rules/conventions.mdc` - Code conventions
 - `AGENTS.md` - Project structure and workflow
 
+## Example Usage for Excalidraw
+
+**Command:**
+```bash
+/review-code packages/excalidraw/components/Button.tsx
+```
+
+**Expected Output Checklist:**
+
+✅ **Strengths**
+- Named exports used correctly
+- TypeScript types properly applied
+
+⚠️ **Issues**
+- Security: Check SVG sanitization if rendering user content
+- Architecture: Verify state management uses actionManager not useState
+- Dependencies: Confirm no external canvas libraries imported
+
+🔒 **Security Notes**
+- Input validation: User-supplied element data validated
+- XSS Prevention: No innerHTML used with user data
+- File imports: If handling .excalidraw files, validate schema
+
+📋 **Action Items**
+- [ ] Verify actionManager usage for state
+- [ ] Check for any forbidden patterns (.cursor/rules/do-not-touch.mdc)
+- [ ] Run yarn test:typecheck to validate types
+
+

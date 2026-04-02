@@ -107,11 +107,11 @@ describe('Tool Activation', () => {
 
 ### Key Test-Utils from packages/excalidraw/tests/
 
-- **`render()`** — renders Excalidraw with canvas and GlobalTestState setup
-- **`Pointer`** — simulates mouse/pointer interactions (down, up, move, etc.)
-- **`UI`** — helpers for clicking elements, keyboard input
-- **`assertElements()`** — validates element state with less fragile comparisons
-- **`GlobalTestState.canvas`** / **`.interactiveCanvas`** — access rendered canvases
+- **`render()`** — renders Excalidraw with canvas and GlobalTestState setup (from `test-utils.ts`)
+- **`Pointer`** — simulates mouse/pointer interactions (down, up, move, etc.) (from `helpers/ui.ts`)
+- **`UI`** — helpers for clicking elements, keyboard input (from `helpers/ui.ts`)
+- **`assertElements()`** — validates element state with less fragile comparisons (from `test-utils.ts`)
+- **`GlobalTestState.canvas`** / **`.interactiveCanvas`** — access rendered canvases (from `test-utils.ts`)
 - **`window.h`** — global Excalidraw instance (state, app, elements)
 
 ## Test Naming
@@ -129,7 +129,14 @@ import React from 'react';
 import { vi } from 'vitest';
 import { render, unmountComponent } from '../../tests/test-utils';
 
+// Properly typed canvas context mock
+interface MockCanvasContext extends CanvasRenderingContext2D {
+  fillRect: ReturnType<typeof vi.fn>;
+}
+
 describe('MyFeature', () => {
+  let originalGetContext: ((contextId: string) => CanvasRenderingContext2D | null) | undefined;
+
   beforeEach(async () => {
     // Clean up previous test's canvas and state
     unmountComponent();
@@ -139,20 +146,33 @@ describe('MyFeature', () => {
 
   it('should work with mocked canvas context', async () => {
     const mockFillRect = vi.fn();
-    const originalGetContext = global.HTMLCanvasElement.prototype.getContext;
+    originalGetContext = global.HTMLCanvasElement.prototype.getContext;
     
-    // @ts-ignore - mocking canvas 2D context
-    global.HTMLCanvasElement.prototype.getContext = (contextId) => ({
-      ...originalGetContext?.call(this, contextId),
-      fillRect: mockFillRect,
-    });
+    // Mock canvas 2D context with proper typing
+    const mockGetContext = (contextId: string) => {
+      const originalContext = originalGetContext?.call(
+        global.HTMLCanvasElement.prototype,
+        contextId
+      );
+      if (contextId === '2d') {
+        return {
+          ...originalContext,
+          fillRect: mockFillRect,
+        } as unknown as MockCanvasContext;
+      }
+      return originalContext;
+    };
+
+    global.HTMLCanvasElement.prototype.getContext = mockGetContext as any;
 
     await render(<Excalidraw />);
     
     // Your test assertions here
     
     // Restore original
-    global.HTMLCanvasElement.prototype.getContext = originalGetContext;
+    if (originalGetContext) {
+      global.HTMLCanvasElement.prototype.getContext = originalGetContext;
+    }
   });
 });
 ```

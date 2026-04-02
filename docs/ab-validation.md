@@ -69,7 +69,7 @@ export default CoordinateDisplay; // Default export (pattern mismatch)
 When the rule was **ENABLED** (active in `.cursor/rules/`):
 
 ### Architectural Approach
-- **State Management**: `actionManager.dispatch()` for centralized state
+- **State Management**: `executeAction()` for centralized state (Excalidraw's API for invoking actions)
 - **Export Style**: Named exports (`export const ComponentName`)
 - **Type Safety**: Strict AppState types
 - **Rendering**: Canvas-aware integration
@@ -80,9 +80,9 @@ When the rule was **ENABLED** (active in `.cursor/rules/`):
 ```typescript
 // Excalidraw-pattern state management
 export const ElementCoordinatesDisplay = () => {
-  // Component using actionManager for state
+  // Component using executeAction for state
   const handleCoordinateUpdate = (coords: Coordinates) => {
-    actionManager.dispatch({
+    executeAction({
       type: 'UPDATE_ELEMENT_COORDS',
       payload: coords
     });
