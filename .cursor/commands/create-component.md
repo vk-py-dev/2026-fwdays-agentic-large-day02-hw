@@ -72,7 +72,7 @@ export const ComponentName: FC<ComponentNameProps> = (props) => {
 ### Functional Component (Package)
 ```typescript
 import { FC } from "react";
-import "./ComponentName.css";
+import "./ComponentName.scss";
 
 interface ComponentNameProps {
   // Props here
@@ -95,13 +95,13 @@ export const useComponentName = () => {
 
 ### Test File
 ```typescript
-import { render, screen } from "@testing-library/react";
+import { render } from "@testing-library/react";
 import { ComponentName } from "./ComponentName";
 
 describe("ComponentName", () => {
   it("renders correctly", () => {
-    render(<ComponentName />);
-    expect(screen.getByRole("region")).toBeInTheDocument();
+    const { container } = render(<ComponentName />);
+    expect(container.firstChild).toBeInTheDocument();
   });
 });
 ```
@@ -112,7 +112,7 @@ describe("ComponentName", () => {
 - **Hooks:** Prefix with `use` (e.g., `useLocalStorage`, `useTheme`)
 - **Props Interface:** Named as `ComponentNameProps`
 - **Exports:** Named exports only (no default exports)
-- **CSS:** Co-located in same directory for package components (e.g., `Button.css`)
+- **CSS:** Co-located in same directory for package components (e.g., `Button.scss`)
 - **Location:** App components → `excalidraw-app/components/`, package components → `packages/excalidraw/components/`
 
 ## Post-Generation

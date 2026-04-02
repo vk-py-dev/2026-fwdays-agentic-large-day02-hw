@@ -10,7 +10,7 @@ alwaysApply: false
 
 - Functional components + hooks ONLY (no class components)
 - Props interface: `{ComponentName}Props`
-- Named exports only (no default exports)
+- Prefer named exports for new code; do not refactor existing default exports without a dedicated task
 - Colocated tests: `ComponentName.test.tsx`
 
 ## TypeScript
@@ -30,7 +30,7 @@ alwaysApply: false
 
 - [ ] **No class components**: Search for `class.*extends` in the file
 - [ ] **Props interface exists**: Component has `{ComponentName}Props` type/interface
-- [ ] **Named exports only**: No `export default` statements
+- [ ] **Named exports preferred**: For new components, use `export const`; existing default exports may remain
 - [ ] **No `any` types**: Search for `: any` or `as any`
 - [ ] **No `@ts-ignore`**: Verify file doesn't contain `@ts-ignore`
 - [ ] **Import types correctly**: Type imports use `import type` syntax
@@ -49,7 +49,7 @@ rg ":\s*any" packages/ --type ts --type tsx
 # Find @ts-ignore
 rg "@ts-ignore" packages/ --type ts --type tsx
 
-# Find default exports
+# Find default exports (for reference; not enforced for existing code)
 rg "export\s+default" packages/ --type ts --type tsx
 
 # Find missing import type

@@ -13,9 +13,9 @@ alwaysApply: false
 
 ## Architecture (see also `architecture.mdc`, `do-not-touch.mdc`)
 
-- **State**: Editor chrome and interaction state → **`AppState`** (`types.ts`) and `App` state; element geometry → **`Scene`** / **`Store`** in `@excalidraw/element`. Prefer **`actionManager.dispatch`** / **`Action.perform`** for user-visible changes, not ad-hoc parallel state systems.
+- **State**: Editor chrome and interaction state → **`AppState`** (`types.ts`) and `App` class; element geometry → **`Scene`** / **`Store`** in `@excalidraw/element`. Prefer **`executeAction(...)`** (or `Action.perform()` directly) for user-visible changes, not ad-hoc parallel state systems.
 - **Rendering**: Scene drawn with **canvas 2D** — do not move the editor canvas to react-konva/fabric/pixi.
-- **Protected files** (`renderer.ts`, `restore.ts`, `actions/manager.ts`, `types.ts`) require explicit approval and full verification before edits.
+- **Protected files** (`scene/Renderer.ts`, `data/restore.ts`, `actions/manager.tsx`, `types.ts`) require explicit approval and full verification before edits.
 
 ## Dependencies
 

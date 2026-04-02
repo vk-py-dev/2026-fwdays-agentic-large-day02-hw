@@ -1,5 +1,87 @@
 # AGENTS.md
 
+## Project Overview
+
+Excalidraw is a collaborative whiteboard application built with React and Canvas. This is a **monorepo** containing the core drawing library (`packages/excalidraw/`), the web application (`excalidraw-app/`), and supporting packages for shared utilities, element management, and math operations.
+
+**Key Goals**:
+- Provide a free, open-source drawing/sketching tool
+- Enable real-time collaboration on drawings
+- Maintain high performance with Canvas rendering
+- Support importing/exporting drawings and libraries
+- Ensure security in file handling and data transmission
+
+**Who Uses This**: Web developers integrating Excalidraw into apps, end-users at excalidraw.com, library authors using `@excalidraw/excalidraw` npm package.
+
+## Tech Stack
+
+**Frontend**:
+- React 18+ (component framework)
+- TypeScript (strict mode)
+- Canvas API (rendering)
+- Vite (build tool for app)
+- esbuild (package bundling)
+
+**Backend/Real-time**:
+- Firebase/WebSocket (real-time collaboration)
+- Node.js (tooling)
+
+**Testing & Quality**:
+- Vitest (unit tests)
+- TypeScript (type checking)
+- ESLint + Prettier (linting/formatting)
+
+**State Management**:
+- Custom `actionManager` (not Redux/Zustand)
+- Immutable patterns for drawing state
+
+## Conventions
+
+**Code Style**:
+- Named exports only (no default exports)
+- Strict TypeScript types (no `any`)
+- Immutable state updates via `actionManager`
+- PascalCase for components, camelCase for functions
+
+**Architecture**:
+- `packages/excalidraw/` contains the core library
+- `excalidraw-app/` contains the web application
+- Internal packages for shared logic: `@excalidraw/common`, `@excalidraw/element`, `@excalidraw/math`, `@excalidraw/utils`
+- Use path aliases from `vitest.config.mts`
+
+**File Organization**:
+- React components in dedicated directories
+- Utilities in `utils/` subdirectories
+- Tests colocated with source files (`.test.ts` / `.test.tsx`)
+- Types in separate `types.ts` files or inline
+
+**SVG & Import Security**:
+- Always sanitize imported SVG and `.excalidraw` files
+- Validate element schema for imported drawings
+- Use `DOMPurify` for untrusted content
+
+## Do-Not-Touch / Constraints
+
+**Protected Core Files** — These require full test suite verification before modification:
+- `packages/excalidraw/scene/Renderer.ts` — render pipeline
+- `packages/excalidraw/actions/manager.tsx` — action system
+- `packages/excalidraw/data/restore.ts` — file format compatibility
+- `packages/excalidraw/types.ts` — core types
+
+**Forbidden Patterns**:
+- Do NOT use `useState` for app state (use `actionManager`)
+- Do NOT use external canvas libs (fabric.js, react-konva, pixi.js)
+- Do NOT add unvetted npm packages without security audit
+- Do NOT modify protected files without running complete test suite
+- Do NOT commit `.env` files or secrets; use `.env.example` as template
+
+**Security Constraints**:
+- Validate and sanitize all user input
+- Never render untrusted HTML directly
+- Enforce Content Security Policy headers
+- Use E2E encryption for real-time collaboration data
+- Verify file imports against schema before processing
+
 ## Project Structure
 
 Excalidraw is a **monorepo** with a clear separation between the core library and the application:
@@ -40,6 +122,8 @@ The **memory bank** is the canonical place for long-lived project context (goals
 ## Development Commands
 
 ```bash
+yarn build           # Build all packages and the application
+yarn start           # Start development server for excalidraw-app/
 yarn test:typecheck  # TypeScript type checking
 yarn test:update     # Run all tests (with snapshot updates)
 yarn fix             # Auto-fix formatting and linting issues

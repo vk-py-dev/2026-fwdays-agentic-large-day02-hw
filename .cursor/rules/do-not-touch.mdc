@@ -4,13 +4,13 @@ globs: "packages/excalidraw/**"
 alwaysApply: true
 ---
 
-# Protected Files
+# Excalidraw Protected Files
 
-NEVER modify these files without explicit approval:
+NEVER modify these Excalidraw core files without explicit approval:
 
-- `packages/excalidraw/scene/renderer.ts` — render pipeline
+- `packages/excalidraw/scene/Renderer.ts` — render pipeline
+- `packages/excalidraw/actions/manager.tsx` — action system
 - `packages/excalidraw/data/restore.ts` — file format compat
-- `packages/excalidraw/actions/manager.ts` — action system
 - `packages/excalidraw/types.ts` — core types
 
 Changes to protected files require:
@@ -21,7 +21,15 @@ Changes to protected files require:
 
 ## How to Verify
 
-Before committing changes to protected files:
+Before committing changes to protected files, verify that this rule is applied correctly:
+
+### Protected Files Checklist
+
+Expected protected files in Excalidraw core:
+- [ ] `packages/excalidraw/scene/Renderer.ts` — render pipeline
+- [ ] `packages/excalidraw/actions/manager.tsx` — action system
+- [ ] `packages/excalidraw/data/restore.ts` — file format compat
+- [ ] `packages/excalidraw/types.ts` — core types
 
 ### Code Review Checklist
 
@@ -33,17 +41,28 @@ Before committing changes to protected files:
 
 ### Verification Steps
 
-```bash
-# Check for files that depend on the protected file
-rg "from.*<protected-file>" --type ts --type tsx
+**To verify this rule is triggered for protected files:**
 
-# Run complete test suite
+```bash
+# 1. Check which files would trigger the rule (glob: packages/excalidraw/**)
+ls -la packages/excalidraw/scene/Renderer.ts
+ls -la packages/excalidraw/actions/manager.tsx
+ls -la packages/excalidraw/data/restore.ts
+ls -la packages/excalidraw/types.ts
+
+# 2. Check for files that depend on the protected files
+rg "from.*Renderer" packages/excalidraw --type ts --type tsx | head -10
+rg "from.*manager" packages/excalidraw --type ts --type tsx | head -10
+rg "from.*restore" packages/excalidraw --type ts --type tsx | head -10
+rg "from.*types" packages/excalidraw --type ts --type tsx | head -10
+
+# 3. Run complete test suite
 yarn test:update
 
-# Type check
+# 4. Type check
 yarn test:typecheck
 
-# Build to catch compilation errors
+# 5. Build to catch compilation errors
 yarn build
 ```
 

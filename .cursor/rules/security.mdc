@@ -5,6 +5,8 @@ alwaysApply: true
 
 # Security Standards
 
+⚠️ **Note**: This document covers both generic web security and Excalidraw-specific risks. See the **[Excalidraw-Specific Risks](#excalidraw-specific-risks)** section for canvas rendering, SVG handling, file imports, collaboration security, and infrastructure-specific protections.
+
 ## Input Validation & Sanitization
 
 Always validate and sanitize user input before processing:
@@ -128,7 +130,7 @@ const handleFileUpload = (file: File) => {
 ## Authentication & Authorization
 
 - **Never hardcode** credentials or API keys
-- **Use environment variables** for secrets (`.env`, not `.env.example`)
+- **Store secrets only in environment variables or a secrets manager**; do not commit `.env` files to the repository; keep `.env.example` as a non-secret placeholder demonstrating required keys
 - **Check permissions** before every state-changing operation
 - **Validate tokens** server-side, not just client-side
 
@@ -141,9 +143,261 @@ const canEditDrawing = (userId: string, drawing: Drawing): boolean => {
 
 ---
 
+## Excalidraw-Specific Risks
+
+Excalidraw's core functionality involves rendering user-created content (SVG, canvas elements, imported files) and handling real-time collaboration. These capabilities introduce unique security considerations beyond generic web security.
+
+### SVG & Canvas Rendering Security
+
+**Risk**: User-supplied drawing data and imported SVG/library files can contain malicious payloads that execute when rendered or processed.
+
+**Mitigations**:
+
+```typescript
+// ❌ BAD - Unvalidated SVG rendering
+const renderImportedSVG = (svgString: string) => {
+  const container = document.createElement('div');
+  container.innerHTML = svgString; // XSS vector
+  return container;
+};
+
+// ✅ GOOD - Sanitized SVG processing
+import DOMPurify from 'dompurify';
+
+const renderImportedSVG = (svgString: string) => {
+  // Sanitize SVG to remove event handlers and scripts
+  const safeSVG = DOMPurify.sanitize(svgString, {
+    ALLOWED_TAGS: ['svg', 'g', 'rect', 'circle', 'path', 'ellipse', 'polyline', 'polygon', 'line', 'text', 'tspan', 'image', 'defs', 'linearGradient', 'radialGradient', 'stop', 'pattern', 'marker', 'filter', 'feGaussianBlur', 'feColorMatrix'],
+    ALLOWED_ATTR: ['x', 'y', 'width', 'height', 'cx', 'cy', 'r', 'd', 'points', 'fill', 'stroke', 'viewBox', 'preserveAspectRatio', 'id', 'href', 'xlink:href', 'opacity', 'transform', 'font-size', 'font-family', 'text-anchor'],
+    KEEP_CONTENT: true,
+  });
+  const container = document.createElement('div');
+  container.innerHTML = safeSVG;
+  return container;
+};
+```
+
+**Excalidraw-Specific Checks**:
+
+- [ ] **SVG imports sanitized**: Verify `DOMPurify` is used for all imported SVG/library files (search: `innerHTML` in rendering paths)
+- [ ] **Canvas API safe**: Verify no `eval()`, `Function()`, or dynamic code in canvas manipulation
+- [ ] **Library file validation**: Check that `.excalidraw` and `.excalidrawlib` imports validate structure before processing
+- [ ] **Element schema enforced**: Validate imported elements conform to `ExcalidrawElement` schema (type, id, position, size)
+- [ ] **No innerHTML for SVG**: Search for `innerSVG` or `innerHTML` patterns in element rendering; use canvas API or DOM APIs with sanitized content
+
+### .excalidraw & Library File Security
+
+**Risk**: `.excalidraw` files (JSON format) and library files can be manipulated to include arbitrary payloads in element metadata, custom properties, or malformed structures.
+
+**Mitigations**:
+
+```typescript
+// ✅ GOOD - Validate .excalidraw file structure
+import { ExcalidrawElement } from '@excalidraw/element';
+
+const importDrawingFile = async (file: File): Promise<DrawingData> => {
+  if (!file.name.endsWith('.excalidraw')) {
+    throw new Error('Invalid file type: expected .excalidraw');
+  }
+  
+  if (file.size > 50 * 1024 * 1024) { // 50MB limit
+    throw new Error('File too large');
+  }
+  
+  const text = await file.text();
+  let data: unknown;
+  
+  try {
+    data = JSON.parse(text);
+  } catch (e) {
+    throw new Error('Malformed JSON in .excalidraw file');
+  }
+  
+  // Validate structure against schema
+  if (!isValidDrawingData(data)) {
+    throw new Error('Invalid drawing data structure');
+  }
+  
+  // Sanitize all text-like fields in elements
+  const elements = (data.elements as ExcalidrawElement[]).map(el => ({
+    ...el,
+    text: sanitizeText(el.text || ''),
+    customData: sanitizeCustomData(el.customData),
+  }));
+  
+  return { ...data, elements };
+};
+
+const isValidDrawingData = (data: unknown): data is DrawingData => {
+  if (typeof data !== 'object' || data === null) return false;
+  
+  const obj = data as Record<string, unknown>;
+  if (!Array.isArray(obj.elements)) return false;
+  if (obj.appState && typeof obj.appState !== 'object') return false;
+  
+  return true;
+};
+
+const sanitizeText = (text: string): string => {
+  // Remove null bytes and excessive whitespace
+  return text.replace(/\x00/g, '').slice(0, 10000);
+};
+
+const sanitizeCustomData = (customData: unknown): Record<string, unknown> | null => {
+  if (!customData || typeof customData !== 'object') return null;
+  // Only allow safe JSON-serializable types
+  try {
+    return JSON.parse(JSON.stringify(customData));
+  } catch {
+    return null;
+  }
+};
+```
+
+**Excalidraw-Specific Checks**:
+
+- [ ] **File format validated**: `.excalidraw` and `.excalidrawlib` files checked before import (file extension, JSON parsing, schema validation)
+- [ ] **Element array schema enforced**: All elements validated against `ExcalidrawElement` type; required fields present (id, type, x, y, width, height)
+- [ ] **Custom properties sanitized**: Any user-defined custom data in elements is parsed safely without code execution
+- [ ] **File size limits enforced**: Drawing files limited to reasonable size (e.g., 50MB) to prevent DoS
+- [ ] **Restore function isolated**: Verify `packages/excalidraw/data/restore.ts` validates all restored data (protected file — changes require full test suite)
+
+### CSP (Content Security Policy) Configuration
+
+**Risk**: Without proper CSP headers, embedded iframes, external scripts, and inline styles can be injected or executed maliciously.
+
+**Mitigations**:
+
+```
+# ✅ GOOD - Strict CSP for Excalidraw app
+Content-Security-Policy: 
+  default-src 'self'; 
+  script-src 'self' 'wasm-unsafe-eval'; 
+  style-src 'self' 'unsafe-inline'; 
+  img-src 'self' data: https:; 
+  font-src 'self' data:; 
+  connect-src 'self' https: wss:; 
+  frame-ancestors 'none'; 
+  base-uri 'self'; 
+  form-action 'self';
+```
+
+**Rationale**:
+- `script-src 'wasm-unsafe-eval'` — Required for Excalidraw's WASM optimizations
+- `style-src 'unsafe-inline'` — Required for dynamic canvas styling (review if component-based styling is possible)
+- `frame-ancestors 'none'` — Prevents embedding in cross-origin iframes (protects against clickjacking)
+- `connect-src wss:` — Required for WebSocket real-time collaboration
+- `img-src data:` — Allows inline data URIs for exported drawings
+
+**Excalidraw-Specific Checks**:
+
+- [ ] **CSP frame-ancestors set**: Verify header includes `frame-ancestors 'none'` or restricted origins only
+- [ ] **CSP script-src configured**: Check that `'wasm-unsafe-eval'` is used if WASM is enabled, no `'unsafe-eval'`
+- [ ] **CSP connect-src allows WebSocket**: Verify `wss:` is included for real-time collaboration
+- [ ] **No unsafe-inline scripts**: Search for `<script>` tags with inline code; use `<script src>` only
+- [ ] **CSP headers tested**: Verify no console errors for CSP violations in browser DevTools
+
+### Real-Time Collaboration & E2E Encryption
+
+**Risk**: Real-time collaboration via WebSocket/Firebase can expose user drawing data in transit and at rest. Untrusted clients can inject malicious changes.
+
+**Mitigations**:
+
+```typescript
+// ✅ GOOD - E2E encryption for collaboration
+import { encrypt, decrypt } from '@excalidraw/crypto';
+
+const sendCollaborationUpdate = async (
+  update: ExcalidrawChange,
+  roomId: string,
+  encryptionKey: string
+) => {
+  // Encrypt before sending
+  const encrypted = await encrypt(JSON.stringify(update), encryptionKey);
+  
+  await firebaseDb.collection('rooms').doc(roomId).collection('changes').add({
+    encrypted,
+    timestamp: serverTimestamp(),
+    clientId: generateClientId(),
+  });
+};
+
+const receiveCollaborationUpdate = async (
+  encryptedUpdate: string,
+  encryptionKey: string
+): Promise<ExcalidrawChange> => {
+  // Decrypt and validate
+  const decrypted = await decrypt(encryptedUpdate, encryptionKey);
+  const update = JSON.parse(decrypted);
+  
+  // Validate update structure
+  if (!isValidExcalidrawChange(update)) {
+    throw new Error('Invalid collaboration update');
+  }
+  
+  return update;
+};
+```
+
+**Excalidraw-Specific Checks**:
+
+- [ ] **E2E encryption enabled for real-time rooms**: Verify all WebSocket/Firebase collaboration uses encryption
+- [ ] **Room encryption key management**: Check that encryption keys are generated per room and never logged or exposed
+- [ ] **Update validation**: Verify all received collaboration updates are validated before applying to app state
+- [ ] **Client ID tracking**: Ensure client IDs are generated securely and cannot be spoofed
+- [ ] **Timestamp verification**: Check that server-generated timestamps are used to prevent replay attacks
+- [ ] **Rate limiting on updates**: Verify real-time updates are rate-limited per client to prevent DoS
+
+### Firebase & Backend Security
+
+**Risk**: Firebase Realtime Database and Cloud Firestore can expose drawing data if security rules are misconfigured. Unauthorized clients can read/write other users' data.
+
+**Mitigations** (Firebase Security Rules):
+
+```
+// ✅ GOOD - Firestore security rules for Excalidraw collaboration
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /rooms/{roomId} {
+      // Only allow owner or invited collaborators
+      allow read, write: if request.auth != null && 
+        (resource.data.owner == request.auth.uid || 
+         request.auth.uid in resource.data.collaborators);
+    }
+    
+    match /rooms/{roomId}/changes/{changeId} {
+      // Allow reading if user is collaborator
+      allow read: if request.auth != null &&
+        exists(/databases/$(database)/documents/rooms/$(roomId)) &&
+        (get(/databases/$(database)/documents/rooms/$(roomId)).data.owner == request.auth.uid ||
+         request.auth.uid in get(/databases/$(database)/documents/rooms/$(roomId)).data.collaborators);
+      
+      // Only allow appending, never update or delete
+      allow create: if request.auth != null &&
+        request.resource.data.clientId == request.auth.uid &&
+        request.resource.data.roomId == roomId;
+      
+      allow delete: if false; // Never allow deletion of history
+    }
+  }
+}
+```
+
+**Excalidraw-Specific Checks**:
+
+- [ ] **Firebase rules enforce ownership**: Verify owner and collaborator checks on all read/write operations
+- [ ] **Collaboration updates append-only**: Check that changes are created (not updated) to maintain immutable history
+- [ ] **Room encryption keys in app only**: Verify encryption keys are NOT stored in Firebase; generated client-side
+- [ ] **User authentication required**: Confirm all database rules check `request.auth != null`
+- [ ] **Rate limiting configured**: Check Firebase has rate-limit rules or Cloud Functions to prevent document write spam
+- [ ] **Data retention policy**: Verify old change records are archived or deleted per compliance requirements
+
+---
+
 ## How to Verify
 
-### Code Review Checklist
+### Code Review Checklist (Generic)
 
 - [ ] **User inputs checked**: All `userInput`, `URLParams`, `query parameters`, `file uploads` are validated
 - [ ] **No innerHTML with user data**: Search for `innerHTML +=`, `innerHTML =` patterns
@@ -154,7 +408,20 @@ const canEditDrawing = (userId: string, drawing: Drawing): boolean => {
 - [ ] **Dependencies audited**: Run `yarn audit` before merge, no high/critical vulnerabilities
 - [ ] **API endpoints protected**: Authentication/authorization checked server-side
 
-### Automated Checks
+### Excalidraw-Specific Code Review Checklist
+
+- [ ] **SVG/innerHTML scanning**: Run search patterns below; verify all SVG rendering uses DOMPurify sanitization
+- [ ] **innerSVG safety**: Search for `innerSVG` patterns; ensure no user content directly set on SVG elements
+- [ ] **File import validation**: Verify `.excalidraw`, `.excalidrawlib` imports validate JSON structure and element schema
+- [ ] **Library element schema**: Check imported library elements conform to `ExcalidrawElement` type (required: id, type, x, y, width, height)
+- [ ] **Custom data sanitization**: Verify custom properties in elements are JSON-safe and don't contain code
+- [ ] **CSP headers present**: Check production app headers include `frame-ancestors 'none'` and `script-src` restrictions
+- [ ] **E2E encryption enforced**: Verify real-time collaboration uses encryption; room keys never logged or stored server-side
+- [ ] **Firebase rules audited**: Confirm ownership and collaborator checks; rules prevent unauthorized access
+- [ ] **No restore.ts changes**: Verify `packages/excalidraw/data/restore.ts` (protected file) unchanged unless with full test suite
+- [ ] **Renderer security**: Verify `packages/excalidraw/scene/Renderer.ts` uses safe rendering methods; no innerHTML in render pipeline
+
+### Automated Checks (Generic)
 
 ```bash
 # Check for security vulnerabilities in dependencies
@@ -166,11 +433,76 @@ rg "eval\(" packages/ --type ts --type tsx
 rg "new Function\(" packages/ --type ts --type tsx
 ```
 
-### Testing
+### Automated Checks (Excalidraw-Specific)
+
+```bash
+# 1. SVG rendering security - search for innerHTML/innerSVG patterns in rendering code
+rg "innerHTML\s*=" packages/excalidraw/scene/ --type ts --type tsx
+rg "innerSVG\s*=" packages/excalidraw/ --type ts --type tsx
+
+# 2. Sanitization verification - confirm DOMPurify usage in SVG/import paths
+rg "DOMPurify\.sanitize" packages/excalidraw/ --type ts --type tsx
+
+# 3. File import validation - check .excalidraw/.excalidrawlib parsing
+rg "\.excalidraw|\.excalidrawlib|importDrawing|importLibrary" packages/excalidraw/actions/ --type ts --type tsx | head -20
+
+# 4. Element schema validation - search for type checking on imported elements
+rg "ExcalidrawElement|isValidElement|validateElement" packages/excalidraw/actions/ --type ts --type tsx | head -20
+
+# 5. Restore function inspection (protected file - reference only)
+ls -la packages/excalidraw/data/restore.ts
+
+# 6. Renderer inspection (protected file - reference only)
+ls -la packages/excalidraw/scene/Renderer.ts
+
+# 7. Real-time collaboration - verify encryption usage
+rg "encrypt|E2E|collaborat" packages/excalidraw/collaboration/ --type ts --type tsx
+
+# 8. Firebase rules audit - check security rules configuration
+find . -name "firestore\.rules" -o -name "*firebase*rules*" -type f | head -10
+
+# 9. CSP header verification - check web app configuration
+rg "Content-Security-Policy|frame-ancestors|script-src" excalidraw-app/ --type ts --type tsx --type js --type json | head -20
+
+# 10. Custom data handling - search for metadata/customData processing
+rg "customData|metadata|\.data\[" packages/excalidraw/actions/ --type ts --type tsx | head -20
+```
+
+### Testing (Generic)
 
 - [ ] Attempt to inject XSS payloads: `<img src=x onerror=alert(1)>`
 - [ ] Test with invalid/oversized file uploads
 - [ ] Verify CSRF tokens are present in forms
 - [ ] Check that auth tokens are not logged or exposed in network tab
 - [ ] Validate that API rejects requests without proper authorization
+
+### Testing (Excalidraw-Specific)
+
+**SVG/Rendering Security**:
+- [ ] Attempt to import SVG with event handlers: `<svg onload=alert(1)><circle onclick=alert(2)></svg>` — verify no execution
+- [ ] Import SVG with script tags: `<svg><script>alert('xss')</script></svg>` — verify script is stripped
+- [ ] Import SVG with data URIs: `<svg><image href="data:text/html,<script>alert(1)</script>"></image></svg>` — verify sanitized
+
+**File Import Security**:
+- [ ] Import `.excalidraw` file with malformed JSON — verify error handling
+- [ ] Import `.excalidraw` with oversized drawing (100MB+) — verify size limit enforced
+- [ ] Import `.excalidraw` with invalid element schema (missing required fields) — verify validation rejects
+- [ ] Import library with custom data containing code: `"customData": {"fn": "alert(1)"}` — verify it's not executed
+- [ ] Import `.excalidrawlib` with modified type declarations — verify schema enforcement
+
+**Real-Time Collaboration**:
+- [ ] Send unencrypted collaboration update on a room with E2E encryption enabled — verify rejection
+- [ ] Attempt to modify other user's updates in real-time room — verify permission denied
+- [ ] Send collaboration update with spoofed clientId — verify server rejects
+- [ ] Check network traffic for encryption of drawing data — verify no plaintext exposure
+
+**CSP Compliance**:
+- [ ] Open app in browser; check DevTools Console for CSP violations — should be none
+- [ ] Attempt to load external scripts via iframe injection — verify blocked by `frame-ancestors 'none'`
+- [ ] Verify WebSocket connections to collaboration server use `wss://` (not `ws://`)
+
+**Firebase Security**:
+- [ ] Attempt to read another user's private drawing room via Firestore — verify denied
+- [ ] Attempt to delete historical changes in a shared room — verify Firebase rules reject delete
+- [ ] Check that encryption keys are never stored or logged in Firebase — verify key management is client-only
 

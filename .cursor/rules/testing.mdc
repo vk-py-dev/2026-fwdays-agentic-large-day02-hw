@@ -9,78 +9,110 @@ alwaysApply: false
 ## Test File Structure
 
 - **Location**: Colocated with source file (e.g., `Button.test.tsx` next to `Button.tsx`)
+  - Example: `packages/excalidraw/components/Button/Button.tsx` → `packages/excalidraw/components/Button/Button.test.tsx`
+  - Example: `packages/excalidraw/utils/element-utils.ts` → `packages/excalidraw/utils/element-utils.test.ts`
 - **Naming**: `{FileName}.test.ts` or `{FileName}.test.tsx`
 - **Framework**: Vitest with React Testing Library for components
 - **Organization**: Group related tests with `describe` blocks
 
 ## Writing Tests
 
-### Basic Test Structure
+### Basic Test Structure (Component Tests)
+
+For Excalidraw components, use the custom `render` from `packages/excalidraw/tests/test-utils.ts`:
 
 ```typescript
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import React from 'react';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { render, fireEvent, getByTestId, waitFor } from '../../tests/test-utils';
+import { Excalidraw } from '../../index';
 
-describe('ComponentName', () => {
-  beforeEach(() => {
-    // Setup before each test
+describe('DropdownMenu', () => {
+  beforeEach(async () => {
+    localStorage.clear();
   });
 
-  afterEach(() => {
-    // Cleanup after each test
-  });
-
-  it('should render without crashing', () => {
-    render(<ComponentName />);
-    expect(screen.getByRole('button')).toBeInTheDocument();
-  });
-
-  it('should handle user interactions', async () => {
-    const user = userEvent.setup();
-    render(<ComponentName onClick={vi.fn()} />);
-    await user.click(screen.getByRole('button'));
-    expect(mockFn).toHaveBeenCalled();
+  it('should open menu when triggered', async () => {
+    const { container } = await render(<Excalidraw />);
+    
+    expect(window.h.state.openMenu).toBe(null);
+    fireEvent.click(getByTestId(container, 'main-menu-trigger'));
+    expect(window.h.state.openMenu).toBe('canvas');
   });
 });
 ```
 
-### Component Testing
+### Utility/Function Tests
 
 ```typescript
-// ✅ GOOD - Test user interactions, not implementation
-it('should call onClick when clicked', async () => {
-  const handleClick = vi.fn();
-  const user = userEvent.setup();
-  
-  render(<Button onClick={handleClick}>Click me</Button>);
-  await user.click(screen.getByRole('button'));
-  
-  expect(handleClick).toHaveBeenCalled();
-});
+import { describe, it, expect } from 'vitest';
+import { calculateDistance } from './geometry-utils';
 
-// ❌ BAD - Testing implementation details
-it('should call onClick when clicked', () => {
-  const wrapper = shallow(<Button />);
-  wrapper.find('button').simulate('click');
-  // ...
+describe('calculateDistance', () => {
+  it('should calculate correct distance between points', () => {
+    const result = calculateDistance({ x: 0, y: 0 }, { x: 3, y: 4 });
+    expect(result).toBe(5);
+  });
+
+  it('should handle identical points', () => {
+    const result = calculateDistance({ x: 5, y: 5 }, { x: 5, y: 5 });
+    expect(result).toBe(0);
+  });
 });
 ```
 
-### Utility/Function Testing
+### Integration Tests with ExcalidrawTestUtils
+
+For testing with Excalidraw's global state and canvas, use helpers from `test-utils.ts`:
 
 ```typescript
-// ✅ GOOD - Test inputs and outputs
-it('should calculate correct value', () => {
-  const result = calculateSum(2, 3);
-  expect(result).toBe(5);
-});
+import React from 'react';
+import { vi } from 'vitest';
+import { Excalidraw } from '../index';
+import { Pointer } from './helpers/ui';
+import { render, act } from './test-utils';
 
-// ✅ GOOD - Test edge cases and error conditions
-it('should handle null values gracefully', () => {
-  expect(() => calculateSum(null, 3)).toThrow('Invalid input');
+describe('Tool Activation', () => {
+  let excalidrawAPI: ExcalidrawImperativeAPI;
+  const mouse = new Pointer('mouse');
+
+  beforeEach(async () => {
+    const excalidrawAPIPromise = resolvablePromise<ExcalidrawImperativeAPI>();
+    await render(
+      <Excalidraw
+        onExcalidrawAPI={(api) => excalidrawAPIPromise.resolve(api as any)}
+      />,
+    );
+    excalidrawAPI = await excalidrawAPIPromise;
+  });
+
+  it('should set active tool via API', async () => {
+    const h = window.h;
+    expect(h.state.activeTool.type).toBe('selection');
+    
+    act(() => {
+      excalidrawAPI.setActiveTool({ type: 'rectangle' });
+    });
+    
+    expect(h.state.activeTool.type).toBe('rectangle');
+    
+    // Simulate user interaction
+    mouse.down(10, 10);
+    mouse.up(20, 20);
+    
+    expect(h.state.activeTool.type).toBe('selection');
+  });
 });
 ```
+
+### Key Test-Utils from packages/excalidraw/tests/
+
+- **`render()`** — renders Excalidraw with canvas and GlobalTestState setup
+- **`Pointer`** — simulates mouse/pointer interactions (down, up, move, etc.)
+- **`UI`** — helpers for clicking elements, keyboard input
+- **`assertElements()`** — validates element state with less fragile comparisons
+- **`GlobalTestState.canvas`** / **`.interactiveCanvas`** — access rendered canvases
+- **`window.h`** — global Excalidraw instance (state, app, elements)
 
 ## Test Naming
 
@@ -90,13 +122,50 @@ it('should handle null values gracefully', () => {
 
 ## Mocking & Setup
 
+### Excalidraw-Specific Setup
+
+```typescript
+import React from 'react';
+import { vi } from 'vitest';
+import { render, unmountComponent } from '../../tests/test-utils';
+
+describe('MyFeature', () => {
+  beforeEach(async () => {
+    // Clean up previous test's canvas and state
+    unmountComponent();
+    localStorage.clear();
+    vi.clearAllMocks();
+  });
+
+  it('should work with mocked canvas context', async () => {
+    const mockFillRect = vi.fn();
+    const originalGetContext = global.HTMLCanvasElement.prototype.getContext;
+    
+    // @ts-ignore - mocking canvas 2D context
+    global.HTMLCanvasElement.prototype.getContext = (contextId) => ({
+      ...originalGetContext?.call(this, contextId),
+      fillRect: mockFillRect,
+    });
+
+    await render(<Excalidraw />);
+    
+    // Your test assertions here
+    
+    // Restore original
+    global.HTMLCanvasElement.prototype.getContext = originalGetContext;
+  });
+});
+```
+
+### General Mocking Best Practices
+
 ```typescript
 // ✅ GOOD - Mock external dependencies
 import { vi } from 'vitest';
 
 const mockFetch = vi.fn().mockResolvedValue({ data: [] });
 
-// ✅ GOOD - Use beforeEach for common setup
+// ✅ GOOD - Use beforeEach for common setup and cleanup
 beforeEach(() => {
   vi.clearAllMocks();
   mockFetch.mockClear();
@@ -119,6 +188,55 @@ it('should render complex component correctly', () => {
 // Don't snapshot trivial output or constantly failing snapshots
 ```
 
+## Excalidraw-Specific Testing Patterns
+
+### Testing Element State
+
+```typescript
+import { assertElements, assertSelectedElements } from '../../tests/test-utils';
+
+describe('Element Manipulation', () => {
+  it('should create and select rectangle element', async () => {
+    const h = window.h;
+    const { container } = await render(<Excalidraw />);
+    
+    // Create and select element
+    // ... interaction code ...
+    
+    // Validate selected elements
+    assertSelectedElements(expectedElement.id);
+    
+    // Validate element properties
+    assertElements(h.app.getSceneElements(), [
+      {
+        type: 'rectangle',
+        width: 200,
+        height: 100,
+        selected: true,
+      },
+    ]);
+  });
+});
+```
+
+### Testing with Local Storage State
+
+```typescript
+import { render } from '../../tests/test-utils';
+
+it('should restore elements from localStorage', async () => {
+  const { container } = await render(<Excalidraw />, {
+    localStorageData: {
+      elements: [/* element objects */],
+      appState: { viewBackgroundColor: '#ffffff' },
+    },
+  });
+  
+  expect(window.h.state.viewBackgroundColor).toBe('#ffffff');
+  expect(window.h.app.getSceneElements()).toHaveLength(1);
+});
+```
+
 ## Running Tests
 
 ```bash
@@ -133,6 +251,9 @@ yarn test Button.test.tsx
 
 # Run tests with coverage
 yarn test:coverage
+
+# Run tests for Excalidraw package only
+yarn test:app packages/excalidraw/tests/tool.test.tsx
 ```
 
 ## Coverage Goals
@@ -147,46 +268,61 @@ yarn test:coverage
 
 ### Code Review Checklist
 
-- [ ] **Test file exists**: Source file has corresponding `.test.ts` or `.test.tsx`
-- [ ] **Descriptive test names**: Tests describe behavior, not implementation
-- [ ] **No implementation testing**: Tests focus on inputs/outputs, not internal details
-- [ ] **Async handling correct**: `async/await` used properly with `userEvent.setup()`
-- [ ] **Mocks properly setup**: External dependencies are mocked, not real APIs called
-- [ ] **Cleanup performed**: `afterEach` or `cleanup` called to prevent test pollution
-- [ ] **No hardcoded timeouts**: Avoid `setTimeout` in tests, use waitFor or userEvent
+- [ ] **Test file exists**: Source file has corresponding `.test.ts` or `.test.tsx` in same directory
+- [ ] **Descriptive test names**: Tests describe behavior, not implementation (e.g., "should open menu when triggered" not "should set openMenu state")
+- [ ] **No implementation testing**: Tests focus on user interactions and outcomes, not internal details
+- [ ] **Async handling correct**: `async/await` used properly; component tests use `await render()`
+- [ ] **Uses correct test-utils**: Component integration tests import from `packages/excalidraw/tests/test-utils`
+- [ ] **Cleanup performed**: Component tests call `unmountComponent()` and `localStorage.clear()` in `beforeEach`
+- [ ] **GlobalState accessed correctly**: Integration tests use `window.h` for state, `window.h.app` for app methods
+- [ ] **Canvas interactions use Pointer**: Mouse/pointer interactions use `Pointer` helper from `test-utils`
+- [ ] **Element assertions use helpers**: Complex element validation uses `assertElements()` or `assertSelectedElements()`
+- [ ] **No hardcoded timeouts**: Avoid `setTimeout` in tests, use `waitFor()` or async helpers
 - [ ] **Assertions are specific**: Use exact matchers (not `toBeTruthy()`), avoid generic checks
-- [ ] **No snapshot bloat**: Snapshots are reviewed and kept minimal
-- [ ] **Edge cases covered**: Tests include error conditions, empty states, null values
+- [ ] **No snapshot bloat**: Snapshots are reviewed, kept minimal, and only used for complex structures
 
 ### Automated Checks
 
 ```bash
-# Find tests without proper async handling
-rg "userEvent\.(click|type)" packages/ --type tsx -A2 | rg -v "await"
+# Verify test files are colocated with source
+ls packages/excalidraw/components/*.test.tsx | head -10
 
-# Find tests with implementation names
-rg "it\('should.*setState" packages/ --type tsx
+# Find missing imports from test-utils in integration tests
+rg "import.*from.*test-utils" packages/excalidraw/tests/*.test.tsx
 
-# Find broad assertions
-rg "toBeTruthy\(\)|toBeFalsy\(\)" packages/ --type tsx
+# Verify integration tests use render from test-utils, not React Testing Library's render
+rg "from '@testing-library/react'" packages/excalidraw/tests/*.test.tsx
 
-# Verify all source files have tests
-for file in $(rg "^export\s+(const|function|class)" packages/ --files-with-matches --type tsx); do
-  if [ ! -f "${file%.tsx}.test.tsx" ] && [ ! -f "${file%.ts}.test.ts" ]; then
-    echo "Missing test: $file"
-  fi
-done
+# Check for proper cleanup in beforeEach
+rg "beforeEach.*\{" packages/excalidraw/tests/ -A3 | grep -E "(unmountComponent|localStorage.clear)"
+
+# Find tests accessing window.h (state access pattern)
+rg "window\.h\.(state|app)" packages/excalidraw/tests/ | head -10
+
+# Verify Pointer usage for mouse interactions
+rg "new Pointer\(" packages/excalidraw/tests/ | head -5
+
+# Find tests with implementation detail assertions
+rg "it\('should.*setState|it\('should.*call.*Fn" packages/excalidraw --type tsx
 ```
 
 ### Manual Testing Process
 
 1. **Run test suite**: `yarn test:update` — verify all tests pass
 2. **Check coverage**: `yarn test:coverage` — ensure critical paths covered
-3. **Review test names**: Each test should clearly state what it does
-4. **Verify async patterns**: Async tests use `await` and `userEvent.setup()`
-5. **Inspect mocks**: Ensure external APIs are mocked, not real calls
-6. **Validate assertions**: Each assertion is specific and meaningful
-7. **No test interdependence**: Tests should run in any order
+3. **Review test names**: Each test should clearly state what it does (behavior-focused, not implementation)
+4. **Verify async patterns**: 
+   - Component tests use `await render(<Excalidraw />)`
+   - Integration tests use `window.h` to access state after render completes
+   - Pointer interactions don't need `await`
+5. **Inspect setup/teardown**: 
+   - `beforeEach()` calls `unmountComponent()` and `localStorage.clear()`
+   - No test state leaks to next test
+6. **Validate test-utils usage**: 
+   - Uses `render` from `packages/excalidraw/tests/test-utils`
+   - Uses `Pointer`, `UI`, `assertElements` for interactions and assertions
+7. **No test interdependence**: Tests should run in any order with `yarn test -- --shuffle`
+8. **Canvas rendering**: For canvas-related tests, verify `GlobalTestState.canvas` is accessible
 
 ### Testing Scenarios
 

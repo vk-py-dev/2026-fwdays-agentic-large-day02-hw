@@ -9,8 +9,9 @@ alwaysApply: false
 ## State Management
 
 - Custom state via actionManager — NOT Redux/Zustand/MobX
-- State updates: actionManager.dispatch() ONLY
+- State updates: actionManager.executeAction(action, source?, value?) ONLY
 - State type: AppState (packages/excalidraw/types.ts)
+- Example: `actionManager.executeAction(actionDelete, "ui", selectedIds)`
 
 ## Rendering
 
@@ -28,7 +29,7 @@ alwaysApply: false
 ### State Management
 
 - [ ] Search for Redux/Zustand/MobX imports in changed files
-- [ ] Verify all state updates use `actionManager.dispatch()`
+- [ ] Verify all state updates use `actionManager.executeAction()` with proper Action objects
 - [ ] Check that custom state conforms to `AppState` type
 
 ### Rendering
