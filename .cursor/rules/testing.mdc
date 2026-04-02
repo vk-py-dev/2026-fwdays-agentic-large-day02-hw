@@ -129,14 +129,7 @@ import React from 'react';
 import { vi } from 'vitest';
 import { render, unmountComponent } from '../../tests/test-utils';
 
-// Properly typed canvas context mock
-interface MockCanvasContext extends CanvasRenderingContext2D {
-  fillRect: ReturnType<typeof vi.fn>;
-}
-
 describe('MyFeature', () => {
-  let originalGetContext: ((contextId: string) => CanvasRenderingContext2D | null) | undefined;
-
   beforeEach(async () => {
     // Clean up previous test's canvas and state
     unmountComponent();
@@ -146,33 +139,26 @@ describe('MyFeature', () => {
 
   it('should work with mocked canvas context', async () => {
     const mockFillRect = vi.fn();
-    originalGetContext = global.HTMLCanvasElement.prototype.getContext;
     
-    // Mock canvas 2D context with proper typing
-    const mockGetContext = (contextId: string) => {
-      const originalContext = originalGetContext?.call(
-        global.HTMLCanvasElement.prototype,
-        contextId
-      );
-      if (contextId === '2d') {
-        return {
-          ...originalContext,
-          fillRect: mockFillRect,
-        } as unknown as MockCanvasContext;
-      }
-      return originalContext;
-    };
-
-    global.HTMLCanvasElement.prototype.getContext = mockGetContext as any;
+    // Spy on HTMLCanvasElement.prototype.getContext with typed mock
+    const getContextSpy = vi.spyOn(HTMLCanvasElement.prototype, 'getContext')
+      .mockImplementation((contextId: string): CanvasRenderingContext2D | null => {
+        if (contextId === '2d') {
+          // Return mocked 2D context with custom fillRect for testing
+          return {
+            fillRect: mockFillRect,
+          } as CanvasRenderingContext2D;
+        }
+        return null;
+      });
 
     await render(<Excalidraw />);
     
     // Your test assertions here
+    expect(mockFillRect).toHaveBeenCalled();
     
-    // Restore original
-    if (originalGetContext) {
-      global.HTMLCanvasElement.prototype.getContext = originalGetContext;
-    }
+    // Restore original implementation
+    getContextSpy.mockRestore();
   });
 });
 ```

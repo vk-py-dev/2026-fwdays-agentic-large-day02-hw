@@ -136,6 +136,8 @@ const SingleLibraryItem = ({
         files: null,
         skipInliningFonts: true,
       });
+      // SVG from exportToSvg() is internal and trusted — no sanitization needed
+      // See .cursor/rules/security.mdc "Internal SVG vs User-Supplied SVG" section
       node.innerHTML = svg.outerHTML;
     })();
   }, [libItem.elements, appState]);

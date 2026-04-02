@@ -50,6 +50,43 @@ Triggered by: "explore", "investigate", "how does X work?"
 - List of related files for deeper investigation
 - Excalidraw-specific findings: state management patterns, rendering approach, protected file usage
 
+## Excalidraw-Specific Exploration Checklist
+
+When investigating features in Excalidraw, use these commands and targets:
+
+**Setup & Build Verification:**
+```bash
+yarn install                    # Install workspace dependencies
+yarn dev                        # Start development server (excalidraw-app)
+yarn build                      # Build all packages
+yarn test:typecheck             # Verify TypeScript compilation
+```
+
+**Workspace Structure:**
+```bash
+ls packages/                    # List workspace packages (element, math, common, utils)
+cat package.json | grep workspaces  # View workspace configuration
+```
+
+**Core Entry Points to Trace:**
+- `packages/excalidraw/index.tsx` — Main component export
+- `excalidraw-app/App.tsx` — Full web application
+- `packages/excalidraw/actions/manager.tsx` — Action system (protected file)
+- `packages/excalidraw/scene/Renderer.ts` — Rendering pipeline (protected file)
+
+**Key Symbols & Patterns to Grep:**
+- `actionManager` — State management entry point
+- `executeAction` — Method to invoke actions
+- `AppState` — Core app state type (packages/excalidraw/types.ts)
+- `ExcalidrawElement` — Element schema (packages/element/)
+- `Canvas2D` — Rendering context
+
+**Protected Files** (require full test suite review if modified):
+- `packages/excalidraw/scene/Renderer.ts` — Render pipeline
+- `packages/excalidraw/actions/manager.tsx` — Action system
+- `packages/excalidraw/data/restore.ts` — File format compatibility
+- `packages/excalidraw/types.ts` — Core types
+
 ## Safety
 
 - READ-ONLY — do not modify any files during exploration
